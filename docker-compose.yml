@@ -10,12 +10,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - GOOGLE_CREDENTIALS_JSON=${GOOGLE_CREDENTIALS_JSON}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - REDIS_URL=redis://redis:6379/0
       - CACHE_ENABLED=true
       - LOG_FORMAT=json
     volumes:
-      - ./credentials:/app/credentials:ro
       - ./data:/app/data
     depends_on:
       - redis
@@ -71,11 +71,10 @@ services:
     container_name: ocr-celery-worker
     command: ["python", "-m", "celery", "-A", "src.batch.queue", "worker", "--loglevel=info"]
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - GOOGLE_CREDENTIALS_JSON=${GOOGLE_CREDENTIALS_JSON}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    volumes:
-      - ./credentials:/app/credentials:ro
     depends_on:
       - redis
     restart: unless-stopped
