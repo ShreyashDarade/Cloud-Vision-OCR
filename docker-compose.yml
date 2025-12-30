@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ocr-api
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - REDIS_URL=redis://redis:6379/0
+      - CACHE_ENABLED=true
+      - LOG_FORMAT=json
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - ./data:/app/data
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - ocr-network
+
+  # Streamlit Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ocr-frontend
+    command: ["python", "-m", "streamlit", "run", "src/frontend/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - ocr-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ocr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - ocr-network
+
+  # Celery Worker (for async processing)
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ocr-celery-worker
+    command: ["python", "-m", "celery", "-A", "src.batch.queue", "worker", "--loglevel=info"]
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - ./credentials:/app/credentials:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - ocr-network
+
+volumes:
+  redis-data:
+
+networks:
+  ocr-network:
+    driver: bridge
